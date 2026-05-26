@@ -1,4 +1,4 @@
-const { useState, useEffect, useRef, useMemo, useCallback } = React;
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 // ============== BALL DEFINITIONS ==============
 const BALLS = [
@@ -29,12 +29,42 @@ const INITIAL_STATE = {
   freeBall: false,      // free ball mode: next pot scores the "ball on" value
 };
 
+// ============== PERSISTENCE ==============
+// Bump the version suffix when the shape of `sb` changes incompatibly.
+const STORAGE_KEY = 'snooker:sb:v1';
+
+function loadPersisted() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Cheap shape check — reject anything that doesn't look like our state.
+    if (
+      !parsed ||
+      !parsed.state ||
+      !Array.isArray(parsed.state.players) ||
+      parsed.state.players.length !== 2
+    ) return null;
+    return {
+      state: parsed.state,
+      history: Array.isArray(parsed.history) ? parsed.history : [],
+      future: Array.isArray(parsed.future) ? parsed.future : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ============== REDUCER ==============
 function reduce(state, action) {
-  const s = {
-    ...state,
-    players: state.players.map(p => ({ ...p }))
-  };
+  // Only deep-copy players when an action actually mutates them.
+  const TOUCHES_PLAYERS = new Set([
+    'POT', 'FOUL', 'CUSTOM_POT', 'CUSTOM_FOUL', 'SET_NAME', 'END_FRAME'
+  ]);
+  const s = TOUCHES_PLAYERS.has(action.type)
+    ? { ...state, players: state.players.map(p => ({ ...p })) }
+    : { ...state };
+
   switch (action.type) {
     case 'POT': {
       const b = action.ball;
@@ -133,14 +163,16 @@ function reduce(state, action) {
       return s;
     }
     case 'TOGGLE_FREEBALL': {
-      return { ...s, freeBall: !s.freeBall };
+      s.freeBall = !s.freeBall;
+      return s;
     }
     case 'SET_NAME': {
       s.players[action.idx].name = action.name;
       return s;
     }
-    case 'NEW_FRAME': {
-      const winner = s.players[0].score >= s.players[1].score ? 0 : 1;
+    case 'END_FRAME': {
+      // Explicit winner — caller decides (handles ties via UI picker).
+      const winner = action.winner;
       s.players[winner].frames += 1;
       s.players[0].score = 0;
       s.players[1].score = 0;
@@ -166,23 +198,35 @@ function reduce(state, action) {
       return s;
     }
     case 'RESET_ALL': {
-      return JSON.parse(JSON.stringify(INITIAL_STATE));
+      // Keep player names — those are part of the user's setup, not the score.
+      return {
+        ...INITIAL_STATE,
+        players: state.players.map(p => ({ name: p.name, score: 0, frames: 0 })),
+      };
     }
     case 'SET_BEST_OF': {
-      return { ...s, bestOf: action.value };
+      s.bestOf = action.value;
+      return s;
     }
     case 'ADJUST_REDS': {
       const next = Math.max(0, Math.min(15, s.redsLeft + action.delta));
-      return { ...s, redsLeft: next, colorsPhase: next === 0 ? s.colorsPhase : false };
+      s.redsLeft = next;
+      if (next > 0) s.colorsPhase = false;
+      return s;
     }
     case 'ENTER_COLORS_PHASE': {
-      return { ...s, redsLeft: 0, colorsPhase: true, nextColor: 2, awaitingColor: false };
+      s.redsLeft = 0;
+      s.colorsPhase = true;
+      s.nextColor = 2;
+      s.awaitingColor = false;
+      return s;
     }
     default:
       return state;
   }
 }
 
+// ============== DERIVED HELPERS ==============
 function remainingPoints(s) {
   if (s.colorsPhase) {
     let sum = 0;
@@ -202,7 +246,7 @@ function snookersNeeded(s) {
   return Math.ceil((behind - remain) / 4);
 }
 
-// Returns frame status: open | { kind: 'won', leader, trailer, snookers }
+// Returns frame status: { kind: 'open' } | { kind: 'won', leader, trailer, snookers }
 function frameStatus(s) {
   const a = s.players[0].score, b = s.players[1].score;
   if (a === b) return { kind: 'open' };
@@ -216,6 +260,23 @@ function frameStatus(s) {
     trailer: 1 - leader,
     snookers: Math.ceil((diff - remain) / 4)
   };
+}
+
+// `colorsPhase && nextColor > 7` means the final black has been potted.
+function isFrameOver(s) {
+  return s.colorsPhase && s.nextColor > 7;
+}
+
+function matchTarget(bestOf) {
+  return Math.floor(bestOf / 2) + 1;
+}
+
+function matchStatus(s) {
+  const target = matchTarget(s.bestOf);
+  const f0 = s.players[0].frames, f1 = s.players[1].frames;
+  if (f0 >= target) return { over: true, winner: 0, target };
+  if (f1 >= target) return { over: true, winner: 1, target };
+  return { over: false, target };
 }
 
 // ============== COMPONENTS ==============
@@ -249,11 +310,12 @@ function Ball({ ball, onTap, size = 72, flashKey }) {
   );
 }
 
-function Header({ state, onMenu, onAdjustReds, onEnterColors }) {
-  const reds = Array.from({ length: 15 }, (_, i) => i < state.redsLeft);
+function Header({ state, onMenu }) {
   const status = frameStatus(state);
   const remain = remainingPoints(state);
   const nextBall = state.colorsPhase && state.nextColor <= 7 ? BALLS[state.nextColor - 1] : null;
+  // colorsPhase + nextColor>7 is handled by the FrameOverModal; in normal
+  // play one of {nextBall, phaseHint} always renders.
   const phaseHint = state.colorsPhase
     ? null
     : state.awaitingColor
@@ -280,9 +342,7 @@ function Header({ state, onMenu, onAdjustReds, onEnterColors }) {
 
         <div className="phase-hint">
           {state.freeBall ? (
-            <>
-              <span className="phase-label" style={{ color: 'var(--gold)' }}>🎯 自由球 · FREE BALL</span>
-            </>
+            <span className="phase-label" style={{ color: 'var(--gold)' }}>🎯 自由球 · FREE BALL</span>
           ) : nextBall ? (
             <>
               <span className="phase-label">下一颗 NEXT</span>
@@ -291,10 +351,8 @@ function Header({ state, onMenu, onAdjustReds, onEnterColors }) {
               }}/>
               <span className="next-name">{nextBall.zh} · {nextBall.en}</span>
             </>
-          ) : phaseHint ? (
+          ) : phaseHint && (
             <span className="phase-label">{phaseHint.zh} · {phaseHint.en}</span>
-          ) : (
-            <span className="phase-label">本局结束 · FRAME OVER</span>
           )}
         </div>
 
@@ -342,7 +400,7 @@ function PlayerPanel({ player, isActive, side, breakScore, onSwitch, onEditName 
         </div>
       </div>
 
-      <div className="pp-score">{player.score}</div>
+      <div className="pp-score" aria-live="polite">{player.score}</div>
 
       <div className="pp-bottom">
         {isActive ? (
@@ -399,7 +457,7 @@ function Keypad({ onClose, onCommit }) {
   );
 }
 
-function Menu({ state, onClose, dispatch }) {
+function Menu({ state, onClose, dispatch, onEndFrame, onResetMatchRequest }) {
   const bestOfOpts = [3, 5, 7, 9, 11, 17, 19];
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -452,11 +510,11 @@ function Menu({ state, onClose, dispatch }) {
             重置当前局
             <span className="menu-btn-en">Reset Frame</span>
           </button>
-          <button className="menu-btn confirm" onClick={() => { dispatch({ type: 'NEW_FRAME' }); onClose(); }}>
+          <button className="menu-btn confirm" onClick={() => { onEndFrame(); onClose(); }}>
             结束本局开下局
             <span className="menu-btn-en">End & Next Frame</span>
           </button>
-          <button className="menu-btn danger" style={{ gridColumn: '1 / span 2' }} onClick={() => { if (confirm('确定重置全场比赛？')) { dispatch({ type: 'RESET_ALL' }); onClose(); } }}>
+          <button className="menu-btn danger" style={{ gridColumn: '1 / span 2' }} onClick={() => { onResetMatchRequest(); onClose(); }}>
             重置整场比赛
             <span className="menu-btn-en">Reset Match</span>
           </button>
@@ -493,6 +551,143 @@ function NameEditor({ initial, onClose, onSave }) {
         <div className="name-actions">
           <button className="menu-btn" onClick={onClose}>取消<span className="menu-btn-en">Cancel</span></button>
           <button className="menu-btn confirm" onClick={save}>保存<span className="menu-btn-en">Save</span></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Outcome modals: tie / frame-over / match-over ----------
+
+function TiePickerModal({ state, onPick, onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal outcome-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-title">平局 · TIED FRAME</div>
+        <div className="outcome-headline">重摆黑球</div>
+        <div className="outcome-sub">Re-spotted Black · 谁取胜本局</div>
+
+        <div className="outcome-scoreline">
+          <div className="outcome-pn">
+            {state.players[0].name}
+            <span className="outcome-score">{state.players[0].score}</span>
+          </div>
+          <div className="outcome-vs">VS</div>
+          <div className="outcome-pn">
+            {state.players[1].name}
+            <span className="outcome-score">{state.players[1].score}</span>
+          </div>
+        </div>
+
+        <div className="tie-picker">
+          <button className="tie-pick-btn" onClick={() => onPick(0)}>
+            {state.players[0].name}
+            <span className="tie-pick-en">Wins Frame</span>
+          </button>
+          <button className="tie-pick-btn" onClick={() => onPick(1)}>
+            {state.players[1].name}
+            <span className="tie-pick-en">Wins Frame</span>
+          </button>
+        </div>
+
+        <div className="menu-close-row">
+          <button className="menu-close" onClick={onClose}>取消 Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FrameOverModal({ state, onConfirm, onClose }) {
+  const a = state.players[0].score, b = state.players[1].score;
+  const tied = a === b;
+  const winner = tied ? null : (a > b ? 0 : 1);
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal outcome-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-title">本局结束 · FRAME OVER</div>
+        <div className="outcome-headline">
+          {tied ? '平局' : `${state.players[winner].name} 胜`}
+        </div>
+        <div className="outcome-sub">
+          {tied ? 'Tied — Re-spotted Black needed' : `第 ${state.frameNo} 局 · Frame ${state.frameNo}`}
+        </div>
+
+        <div className="outcome-scoreline">
+          <div className={`outcome-pn ${winner === 0 ? 'winner' : ''}`}>
+            {state.players[0].name}
+            <span className="outcome-score">{a}</span>
+          </div>
+          <div className="outcome-vs">VS</div>
+          <div className={`outcome-pn ${winner === 1 ? 'winner' : ''}`}>
+            {state.players[1].name}
+            <span className="outcome-score">{b}</span>
+          </div>
+        </div>
+
+        <div className="outcome-actions">
+          <button className="menu-btn" onClick={onClose}>
+            稍后再说<span className="menu-btn-en">Not Yet</span>
+          </button>
+          <button className="menu-btn confirm" onClick={() => onConfirm()}>
+            {tied ? '选择胜者' : '开始下一局'}
+            <span className="menu-btn-en">{tied ? 'Pick Winner' : 'Next Frame'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MatchOverModal({ state, winner, onClose, onReset }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal outcome-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="trophy" aria-hidden="true">🏆</div>
+        <div className="modal-title">整场结束 · MATCH OVER</div>
+        <div className="outcome-headline">{state.players[winner].name} 胜出</div>
+        <div className="outcome-sub">BO {state.bestOf} · First to {matchTarget(state.bestOf)}</div>
+
+        <div className="outcome-scoreline">
+          <div className={`outcome-pn ${winner === 0 ? 'winner' : ''}`}>
+            {state.players[0].name}
+            <span className="outcome-score">{state.players[0].frames}</span>
+          </div>
+          <div className="outcome-vs">局 FR</div>
+          <div className={`outcome-pn ${winner === 1 ? 'winner' : ''}`}>
+            {state.players[1].name}
+            <span className="outcome-score">{state.players[1].frames}</span>
+          </div>
+        </div>
+
+        <div className="outcome-actions">
+          <button className="menu-btn" onClick={onClose}>
+            关闭<span className="menu-btn-en">Dismiss</span>
+          </button>
+          <button className="menu-btn confirm" onClick={() => onReset()}>
+            重新开始一场
+            <span className="menu-btn-en">New Match</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmModal({ title, body, confirmLabel, onConfirm, onClose, danger }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal outcome-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-title">{title}</div>
+        <div className="outcome-headline" style={{ fontSize: 18 }}>{body}</div>
+        <div className="outcome-actions" style={{ marginTop: 14 }}>
+          <button className="menu-btn" onClick={onClose}>
+            取消<span className="menu-btn-en">Cancel</span>
+          </button>
+          <button className={`menu-btn ${danger ? 'danger' : 'confirm'}`} onClick={() => { onConfirm(); onClose(); }}>
+            {confirmLabel}
+            <span className="menu-btn-en">Confirm</span>
+          </button>
         </div>
       </div>
     </div>
@@ -539,11 +734,12 @@ function KeypadIcon() {
 
 // ============== APP ==============
 
-function App() {
+export default function App() {
   // Single state container — state + history + future — avoids the
   // anti-pattern of calling setState inside another setState updater,
   // which React 18 may run multiple times and lose updates.
-  const [sb, setSb] = useState({
+  // Lazy-init from localStorage so a refresh mid-frame doesn't lose progress.
+  const [sb, setSb] = useState(() => loadPersisted() ?? {
     state: INITIAL_STATE,
     history: [],
     future: [],
@@ -552,12 +748,30 @@ function App() {
   const canUndo = sb.history.length > 0;
   const canRedo = sb.future.length > 0;
 
+  // Persist on every change. Wrapped in try/catch — Safari private mode
+  // throws on setItem when quota is 0.
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sb));
+    } catch {
+      /* ignore */
+    }
+  }, [sb]);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [keypadOpen, setKeypadOpen] = useState(false);
   const [editingName, setEditingName] = useState(null);
   const [floats, setFloats] = useState([]);
   const [flashKey, setFlashKey] = useState({});
   const floatId = useRef(0);
+
+  // Frame-end / match-end / tie picker / reset-confirm UI flags.
+  const [frameOverOpen, setFrameOverOpen] = useState(false);
+  const [frameOverAck, setFrameOverAck] = useState(false); // once user dismisses, don't reopen until state changes back-and-forward
+  const [tieOpen, setTieOpen] = useState(false);
+  const [matchOverOpen, setMatchOverOpen] = useState(false);
+  const [matchOverAck, setMatchOverAck] = useState(false);
+  const [resetMatchOpen, setResetMatchOpen] = useState(false);
 
   const dispatch = (action) => {
     setSb(cur => ({
@@ -622,6 +836,58 @@ function App() {
       popFloat(`+${val}`, state.active, 'pos');
       dispatch({ type: 'CUSTOM_POT', value: val });
     }
+  };
+
+  // ----- Frame / Match end detection -----
+  // Auto-open the Frame-Over prompt the first time the final black drops.
+  // `frameOverAck` lets the user dismiss it (to undo etc.) without it
+  // popping back on every render — it resets when the frame state moves away.
+  const frameOver = isFrameOver(state);
+  useEffect(() => {
+    if (frameOver && !frameOverAck) setFrameOverOpen(true);
+    if (!frameOver && frameOverAck) setFrameOverAck(false);
+  }, [frameOver, frameOverAck]);
+
+  const ms = useMemo(() => matchStatus(state), [state]);
+  useEffect(() => {
+    if (ms.over && !matchOverAck) setMatchOverOpen(true);
+    if (!ms.over && matchOverAck) setMatchOverAck(false);
+  }, [ms.over, matchOverAck]);
+
+  // ----- End-frame flow (handles ties correctly) -----
+  const requestEndFrame = () => {
+    const a = state.players[0].score, b = state.players[1].score;
+    if (a === b) {
+      // Tied: must explicitly pick the winner of the re-spotted black.
+      setTieOpen(true);
+      return;
+    }
+    const winner = a > b ? 0 : 1;
+    dispatch({ type: 'END_FRAME', winner });
+    setFrameOverOpen(false);
+    setFrameOverAck(true);
+  };
+  const pickTieWinner = (winner) => {
+    dispatch({ type: 'END_FRAME', winner });
+    setTieOpen(false);
+    setFrameOverOpen(false);
+    setFrameOverAck(true);
+  };
+
+  const handleFrameOverConfirm = () => {
+    // If tied, route through the tie-picker; otherwise just end the frame.
+    if (state.players[0].score === state.players[1].score) {
+      setFrameOverOpen(false);
+      setTieOpen(true);
+      return;
+    }
+    requestEndFrame();
+  };
+
+  const handleResetMatch = () => {
+    dispatch({ type: 'RESET_ALL' });
+    setMatchOverOpen(false);
+    setMatchOverAck(true);
   };
 
   // Scale to viewport
@@ -731,7 +997,13 @@ function App() {
         </div>
 
         {menuOpen && (
-          <Menu state={state} dispatch={dispatch} onClose={() => setMenuOpen(false)} />
+          <Menu
+            state={state}
+            dispatch={dispatch}
+            onEndFrame={requestEndFrame}
+            onResetMatchRequest={() => setResetMatchOpen(true)}
+            onClose={() => setMenuOpen(false)}
+          />
         )}
         {keypadOpen && (
           <Keypad onClose={() => setKeypadOpen(false)} onCommit={handleCustom} />
@@ -741,6 +1013,39 @@ function App() {
             initial={state.players[editingName].name}
             onClose={() => setEditingName(null)}
             onSave={(name) => dispatch({ type: 'SET_NAME', idx: editingName, name })}
+          />
+        )}
+
+        {frameOverOpen && !tieOpen && (
+          <FrameOverModal
+            state={state}
+            onConfirm={handleFrameOverConfirm}
+            onClose={() => { setFrameOverOpen(false); setFrameOverAck(true); }}
+          />
+        )}
+        {tieOpen && (
+          <TiePickerModal
+            state={state}
+            onPick={pickTieWinner}
+            onClose={() => setTieOpen(false)}
+          />
+        )}
+        {matchOverOpen && (
+          <MatchOverModal
+            state={state}
+            winner={ms.winner}
+            onClose={() => { setMatchOverOpen(false); setMatchOverAck(true); }}
+            onReset={handleResetMatch}
+          />
+        )}
+        {resetMatchOpen && (
+          <ConfirmModal
+            title="重置整场比赛 · RESET MATCH"
+            body="所有比分和局数将清零（球员姓名保留）"
+            confirmLabel="确定重置"
+            danger
+            onConfirm={() => dispatch({ type: 'RESET_ALL' })}
+            onClose={() => setResetMatchOpen(false)}
           />
         )}
       </div>
@@ -757,5 +1062,3 @@ function App() {
     </div>
   );
 }
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
