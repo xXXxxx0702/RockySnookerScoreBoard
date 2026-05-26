@@ -246,7 +246,9 @@ function snookersNeeded(s) {
   return Math.ceil((behind - remain) / 4);
 }
 
-// Returns frame status: { kind: 'open' } | { kind: 'won', leader, trailer, snookers }
+// Returns frame status: { kind: 'open' } | { kind: 'won', leader, trailer, over, snookers }
+// `over` = lead - remaining, i.e. how many points the leader is already past the trailer's
+// maximum possible total. Positive `over` means the frame is mathematically locked.
 function frameStatus(s) {
   const a = s.players[0].score, b = s.players[1].score;
   if (a === b) return { kind: 'open' };
@@ -254,11 +256,13 @@ function frameStatus(s) {
   const leader = a > b ? 0 : 1;
   const diff = Math.abs(a - b);
   if (diff <= remain) return { kind: 'open' };
+  const over = diff - remain;
   return {
     kind: 'won',
     leader,
     trailer: 1 - leader,
-    snookers: Math.ceil((diff - remain) / 4)
+    over,
+    snookers: Math.ceil(over / 4)
   };
 }
 
@@ -365,10 +369,11 @@ function Header({ state, onMenu }) {
 
       <div className="hdr-right">
         {status.kind === 'won' && (
-          <span className="won-badge" title={`${state.players[status.leader].name} 已超分锁定胜局 · 对手需 ${status.snookers} 个斯诺克`}>
+          <span className="won-badge" title={`${state.players[status.leader].name} 已超分 ${status.over} 分锁定胜局（对手需 ${status.snookers} 个斯诺克）`}>
             <span className="won-name">{state.players[status.leader].name}</span>
-            <span className="won-sep">锁胜</span>
-            <span className="won-count">{status.snookers}</span>
+            <span className="won-sep">超</span>
+            <span className="won-count">{status.over}</span>
+            <span className="won-sep">分</span>
           </span>
         )}
         <button className="icon-btn" onClick={onMenu} aria-label="Menu">
