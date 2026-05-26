@@ -890,22 +890,58 @@ export default function App() {
     setMatchOverAck(true);
   };
 
-  // Scale to viewport
+  // Scale to viewport, respecting iPhone notch / dynamic-island safe areas.
+  // In landscape on a notched iPhone the camera cutout sits on one side of
+  // the screen — we both shrink the frame to fit inside the safe area AND
+  // shift its centre so it isn't covered.
   const frameRef = useRef(null);
   useEffect(() => {
+    // Read the resolved `env(safe-area-inset-*)` values via a hidden probe.
+    // env() isn't readable directly from JS, but it resolves inside padding.
+    const probe = document.createElement('div');
+    probe.style.cssText =
+      'position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;' +
+      'padding:env(safe-area-inset-top) env(safe-area-inset-right) ' +
+      'env(safe-area-inset-bottom) env(safe-area-inset-left);';
+    document.body.appendChild(probe);
+
+    const readInsets = () => {
+      const cs = getComputedStyle(probe);
+      return {
+        t: parseFloat(cs.paddingTop)    || 0,
+        r: parseFloat(cs.paddingRight)  || 0,
+        b: parseFloat(cs.paddingBottom) || 0,
+        l: parseFloat(cs.paddingLeft)   || 0,
+      };
+    };
+
     const fit = () => {
       if (!frameRef.current) return;
-      const sx = window.innerWidth / 852;
-      const sy = window.innerHeight / 393;
+      const ins = readInsets();
+      const availW = Math.max(0, window.innerWidth  - ins.l - ins.r);
+      const availH = Math.max(0, window.innerHeight - ins.t - ins.b);
+      const sx = availW / 852;
+      const sy = availH / 393;
       const s = Math.min(sx, sy, 1.2);
-      frameRef.current.style.transform = `translate(-50%, -50%) scale(${s})`;
+      // Shift the frame centre toward the side with the larger inset
+      // so it ends up centred *within* the safe area, not the viewport.
+      const offsetX = (ins.l - ins.r) / 2;
+      const offsetY = (ins.t - ins.b) / 2;
+      frameRef.current.style.transform =
+        `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px)) scale(${s})`;
     };
+
+    // Some iOS versions update safe-area insets a frame or two after
+    // orientationchange fires — re-run after a short delay to catch them.
+    const fitTwice = () => { fit(); setTimeout(fit, 250); };
+
     fit();
     window.addEventListener('resize', fit);
-    window.addEventListener('orientationchange', fit);
+    window.addEventListener('orientationchange', fitTwice);
     return () => {
       window.removeEventListener('resize', fit);
-      window.removeEventListener('orientationchange', fit);
+      window.removeEventListener('orientationchange', fitTwice);
+      probe.remove();
     };
   }, []);
 
