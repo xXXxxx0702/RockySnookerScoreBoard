@@ -112,7 +112,7 @@ html, body {
   top: 50%;
   transform: translate(-50%, -50%);
   display: grid;
-  grid-template-columns: 178px 188px 96px;
+  grid-template-columns: 178px 56px 96px;
   gap: 10px;
   align-items: center;
 }
@@ -134,7 +134,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 168px;
+  max-width: 280px;
   justify-content: flex-end;
 }
 .hdr-label {
@@ -184,11 +184,13 @@ html, body {
 .phase-hint {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 4px 10px 4px 10px;
-  border-radius: 12px;
+  padding: 3px 8px;
+  border-radius: 14px;
   background: rgba(0,0,0,0.35);
   border: 1px solid var(--hairline);
+  min-height: 28px;
 }
 .phase-label {
   font-size: 9.5px;
@@ -198,16 +200,40 @@ html, body {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.next-ball {
-  width: 14px;
-  height: 14px;
+/* Target-ball icon shown in the header center slot. Size tuned so 22px ball
+   sits comfortably inside the 28px-tall pill. */
+.hdr-ball {
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  box-shadow: inset -1px -2px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset -1px -2px 4px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.55);
+  flex-shrink: 0;
 }
-.next-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ivory);
+.hdr-ball.rainbow-ball {
+  background:
+    conic-gradient(from 200deg,
+      #C8322B 0deg, #E8B920 51deg, #1B7B3F 102deg, #7A4B27 154deg,
+      #1F5BAA 205deg, #E89AAE 256deg, #1A1A1A 308deg, #C8322B 360deg);
+  position: relative;
+}
+.hdr-ball.rainbow-ball::after {
+  /* subtle glossy highlight to match the realistic look of other balls */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 38%);
+  pointer-events: none;
+}
+.hdr-ball.free-ball {
+  background: radial-gradient(circle at 32% 26%, #fff7c7 0%, #e8b920 55%, #6f5400 100%);
+  font-size: 13px;
+  line-height: 1;
+  color: #3a2c00;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.4);
 }
 
 .snookers-badge {
@@ -283,7 +309,7 @@ html, body {
   color: #fff8e6;
   letter-spacing: 0.01em;
   font-size: 11px;
-  max-width: 56px;
+  max-width: 170px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

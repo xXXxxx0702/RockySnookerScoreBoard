@@ -318,13 +318,28 @@ function Header({ state, onMenu }) {
   const status = frameStatus(state);
   const remain = remainingPoints(state);
   const nextBall = state.colorsPhase && state.nextColor <= 7 ? BALLS[state.nextColor - 1] : null;
-  // colorsPhase + nextColor>7 is handled by the FrameOverModal; in normal
-  // play one of {nextBall, phaseHint} always renders.
-  const phaseHint = state.colorsPhase
-    ? null
-    : state.awaitingColor
-      ? { zh: '击红后取彩', en: 'On a colour' }
-      : { zh: '击红球', en: 'On a red' };
+
+  // What ball to display as the "target" in the header. We render a ball icon
+  // instead of words to save horizontal space.
+  //   freeBall      → 🎯 (any-colour-as-red)
+  //   awaitingColor → rainbow ball (any colour)
+  //   colorsPhase   → the specific next colour
+  //   default       → red ball
+  const ballGradient = (b) =>
+    `radial-gradient(circle at 32% 26%, ${b.high} 0%, ${b.fill} 50%, ${b.dark} 100%)`;
+
+  let targetBall = null;
+  if (state.freeBall) {
+    targetBall = { kind: 'free', title: '自由球 · Free Ball' };
+  } else if (state.colorsPhase && nextBall) {
+    targetBall = { kind: 'solid', style: { background: ballGradient(nextBall) },
+      title: `下一颗 ${nextBall.zh}球 · Next ${nextBall.en}` };
+  } else if (state.awaitingColor) {
+    targetBall = { kind: 'rainbow', title: '击红后取彩 · On a colour (any)' };
+  } else if (!state.colorsPhase) {
+    targetBall = { kind: 'solid', style: { background: ballGradient(BALLS[0]) },
+      title: '击红球 · On a red' };
+  }
 
   return (
     <header className="sb-header">
@@ -344,19 +359,15 @@ function Header({ state, onMenu }) {
           ))}
         </div>
 
-        <div className="phase-hint">
-          {state.freeBall ? (
-            <span className="phase-label" style={{ color: 'var(--gold)' }}>🎯 自由球 · FREE BALL</span>
-          ) : nextBall ? (
-            <>
-              <span className="phase-label">下一颗 NEXT</span>
-              <span className="next-ball" style={{
-                background: `radial-gradient(circle at 32% 26%, ${nextBall.high} 0%, ${nextBall.fill} 50%, ${nextBall.dark} 100%)`
-              }}/>
-              <span className="next-name">{nextBall.zh} · {nextBall.en}</span>
-            </>
-          ) : phaseHint && (
-            <span className="phase-label">{phaseHint.zh} · {phaseHint.en}</span>
+        <div className="phase-hint" title={targetBall ? targetBall.title : ''}>
+          {targetBall && targetBall.kind === 'free' && (
+            <span className="hdr-ball free-ball" aria-label={targetBall.title}>🎯</span>
+          )}
+          {targetBall && targetBall.kind === 'rainbow' && (
+            <span className="hdr-ball rainbow-ball" aria-label={targetBall.title} />
+          )}
+          {targetBall && targetBall.kind === 'solid' && (
+            <span className="hdr-ball" style={targetBall.style} aria-label={targetBall.title} />
           )}
         </div>
 
