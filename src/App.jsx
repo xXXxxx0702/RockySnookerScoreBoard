@@ -938,7 +938,9 @@ export default function App() {
       const availH = Math.max(0, window.innerHeight - ins.t - ins.b);
       const sx = availW / 852;
       const sy = availH / 393;
-      const s = Math.min(sx, sy, 1.2);
+      // No upper cap — let the frame fill whichever dimension is the bottleneck
+      // so large screens (iPad, desktop) don't leave a wide empty border.
+      const s = Math.min(sx, sy);
       // Shift the frame centre toward the side with the larger inset
       // so it ends up centred *within* the safe area, not the viewport.
       const offsetX = (ins.l - ins.r) / 2;
