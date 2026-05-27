@@ -306,11 +306,8 @@ function Ball({ ball, onTap, size = 72, flashKey }) {
       }}
       onClick={() => onTap(ball)}
       aria-label={`${ball.zh} ${ball.en} +${ball.value}`}
-    >
-      <span className="ball-spot" aria-hidden="true">
-        <span className="ball-spot-num">{ball.value}</span>
-      </span>
-    </button>
+    />
+
   );
 }
 
