@@ -84,6 +84,9 @@ http://localhost:4173
 - `sw.js`
 - Workbox 运行时代码
 - 静态资源缓存清单
+- 192x192 和 512x512 PNG 安装图标
+- Android maskable 图标
+- iOS `apple-touch-icon`
 
 安装体验依赖浏览器和系统支持。移动端建议使用 HTTPS 部署，以确保 PWA 安装和 Service Worker 正常工作。
 
@@ -92,7 +95,12 @@ http://localhost:4173
 ```text
 .
 ├── public/
-│   └── favicon.svg
+│   ├── apple-touch-icon.png
+│   ├── favicon.svg
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   ├── maskable-icon-192.png
+│   └── maskable-icon-512.png
 ├── src/
 │   ├── App.jsx
 │   ├── main.jsx
