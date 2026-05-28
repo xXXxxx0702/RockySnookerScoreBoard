@@ -442,6 +442,7 @@ html, body {
   align-items: center;
   gap: 12px;
   min-height: 32px;
+  min-width: 0;
   position: relative;
   z-index: 3;
 }
@@ -464,13 +465,23 @@ html, body {
   align-items: center;
   gap: 8px;
   min-height: 36px;
+  max-width: 270px;
+  min-width: 0;
   transition: background 0.15s ease, color 0.15s ease;
   position: relative;
+}
+.pp-name span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pp-name:hover, .pp-name:active {
   background: rgba(230, 197, 119, 0.12);
 }
 .pp-name .edit-icon {
+  flex-shrink: 0;
   opacity: 0.7;
   transition: opacity 0.15s ease;
   color: var(--brass);
@@ -482,6 +493,7 @@ html, body {
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
+  flex-shrink: 0;
   padding: 5px 14px;
   border-radius: 14px;
   background: rgba(0,0,0,0.55);
@@ -997,7 +1009,8 @@ html, body {
 
 /* Name editor */
 .name-editor {
-  width: 320px;
+  width: 380px;
+  max-width: 92vw;
 }
 .name-input {
   width: 100%;
@@ -1089,6 +1102,11 @@ html, body {
   margin: 4px 0 2px;
   text-shadow: 0 0 18px rgba(230, 197, 119, 0.35);
 }
+.outcome-player-headline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .outcome-sub {
   font-size: 11px;
   font-weight: 700;
@@ -1163,12 +1181,19 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  min-width: 0;
   transition: all 0.15s ease;
 }
 .tie-pick-btn:hover {
   background: linear-gradient(180deg, rgba(230, 197, 119, 0.28), rgba(200, 164, 85, 0.12));
 }
 .tie-pick-btn:active { transform: scale(0.97); }
+.tie-pick-btn .tie-pick-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tie-pick-btn .tie-pick-en {
   font-size: 9px;
   letter-spacing: 0.18em;

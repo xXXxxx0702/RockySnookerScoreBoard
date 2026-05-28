@@ -12,6 +12,7 @@ const BALLS = [
 ];
 
 const FOULS = [4, 5, 6, 7];
+const PLAYER_NAME_MAX = 32;
 
 const INITIAL_STATE = {
   players: [
@@ -401,7 +402,11 @@ function PlayerPanel({ player, isActive, side, breakScore, onSwitch, onEditName 
       onClick={isActive ? undefined : onSwitch}
     >
       <div className="pp-top">
-        <button className="pp-name" onClick={(e) => { e.stopPropagation(); onEditName(); }}>
+        <button
+          className="pp-name"
+          title={player.name || '——'}
+          aria-label={`编辑 ${player.name || '球员'} 姓名`}
+          onClick={(e) => { e.stopPropagation(); onEditName(); }}>
           <span>{player.name || '——'}</span>
           <svg className="edit-icon" viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
             <path d="M11 1.5l3.5 3.5-9 9H2v-3.5z"/>
@@ -559,7 +564,7 @@ function NameEditor({ initial, onClose, onSave }) {
           value={v}
           onChange={(e) => setV(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onClose(); }}
-          maxLength={14}
+          maxLength={PLAYER_NAME_MAX}
         />
         <div className="name-actions">
           <button className="menu-btn" onClick={onClose}>取消<span className="menu-btn-en">Cancel</span></button>
@@ -594,11 +599,11 @@ function TiePickerModal({ state, onPick, onClose }) {
 
         <div className="tie-picker">
           <button className="tie-pick-btn" onClick={() => onPick(0)}>
-            {state.players[0].name}
+            <span className="tie-pick-name">{state.players[0].name}</span>
             <span className="tie-pick-en">Wins Frame</span>
           </button>
           <button className="tie-pick-btn" onClick={() => onPick(1)}>
-            {state.players[1].name}
+            <span className="tie-pick-name">{state.players[1].name}</span>
             <span className="tie-pick-en">Wins Frame</span>
           </button>
         </div>
@@ -619,7 +624,7 @@ function FrameOverModal({ state, onConfirm, onClose }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal outcome-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-title">本局结束 · FRAME OVER</div>
-        <div className="outcome-headline">
+        <div className="outcome-headline outcome-player-headline">
           {tied ? '平局' : `${state.players[winner].name} 胜`}
         </div>
         <div className="outcome-sub">
@@ -658,7 +663,7 @@ function MatchOverModal({ state, winner, onClose, onReset }) {
       <div className="modal outcome-modal" onClick={(e) => e.stopPropagation()}>
         <div className="trophy" aria-hidden="true">🏆</div>
         <div className="modal-title">整场结束 · MATCH OVER</div>
-        <div className="outcome-headline">{state.players[winner].name} 胜出</div>
+        <div className="outcome-headline outcome-player-headline">{state.players[winner].name} 胜出</div>
         <div className="outcome-sub">BO {state.bestOf} · First to {matchTarget(state.bestOf)}</div>
 
         <div className="outcome-scoreline">
